@@ -1,0 +1,11 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Name=Vitoria's Badazz
+Comment=Easy to use application to make Diapo
+GenericName=Badazz
+Exec=badazz
+Icon=/home/marwa/Documents/apps/PyBrand/vic.png
+Terminal=false
+StartupNotify=true
+Type=Application
+Categories=System;Utility;
