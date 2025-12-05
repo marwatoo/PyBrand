@@ -2,358 +2,227 @@
 
 #Created by marwa BIFISSE with the help of Chatgpt, the enemy of humanity
 
-from PIL import Image, ImageOps, ImageDraw, ImageFont, ImageColor, UnidentifiedImageError #some function to manipulate images using Pillow 
-import os # this will allow me to manipulate dirs and files
-import re
-from files import get_dir #instead of using os.cwd, i created this function to return full path of executed script, so i can load elements correctly
 
-#get image resolution
+#Import Pillow to create and generate images
+from PIL import Image, ImageOps, ImageDraw, ImageFont, ImageColor, UnidentifiedImageError #some function to manipulate images using Pillow 
+
+import os # this will allow me to manipulate dirs and files
+import re #Regex
+
+#instead of using os.cwd, i created this function to return full path of executed script, so i can load elements correctly
+from files import get_dir 
+
+#get image resolution in pixels (x,y)
 def get_image_resolution(image_path):
         # Check if file exists and is readable
     if not os.path.isfile(image_path):
-        raise FileNotFoundError(f"The file '{image_path}' does not exist.")
+        raise FileNotFoundError(f"Baddaz '{image_path}' does not exist.")
     if not os.access(image_path, os.R_OK):
-        raise PermissionError(f"The file '{image_path}' cannot be read due to insufficient permissions.")
+        raise PermissionError(f"Baddaz '{image_path}' cannot be read.")
     with Image.open(image_path) as img:
         width, height = img.size
     return width, height
 
-# Create a gradient shadow image.
+# Create a gradient shadow image bottom.
 def create_gradient_shadow_bottom(width, shadow_height):
-    # Create the shadow image with an RGBA mode
+    # Create an empty RGBA shadow image
     shadow = Image.new('RGBA', (width, shadow_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(shadow)
-    
-    # Create the gradient shadow
-    for y in range(shadow_height):
-        alpha = int(255 * (y / shadow_height))  # Opaque at the top, transparent at the bottom
-        draw.line([(0, y), (width, y)], fill=(0, 0, 0, alpha))
-    
-    # Reduce the opacity of the entire shadow by 50%
-    shadow = shadow.convert('RGBA')
-    shadow_with_reduced_opacity = Image.new('RGBA', shadow.size)
-    for x in range(shadow.width):
-        for y in range(shadow.height):
-            r, g, b, a = shadow.getpixel((x, y))
-            a = int(a * 0.5)  # Reduce opacity by 50%
-            shadow_with_reduced_opacity.putpixel((x, y), (r, g, b, a))
-    
-    return shadow_with_reduced_opacity
 
-def create_gradient_shadow_top(width, shadow_height):
-    # Create the shadow image with an RGBA mode
+    # Draw vertical gradient (top transparent -> bottom semi-opaque)
+    for y in range(shadow_height):
+        alpha = int(255 * (y / shadow_height) * 0.5)  # combine 50% opacity reduction here
+        draw.line([(0, y), (width, y)], fill=(0, 0, 0, alpha))
+
+    return shadow
+
+# Create a gradient shadow image top.
+def create_gradient_shadow_top(width, shadow_height, color=(0, 0, 0)):
+
     shadow = Image.new('RGBA', (width, shadow_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(shadow)
-    
-    # Create the gradient shadow from top (opaque) to bottom (transparent)
+
+    # Draw vertical gradient from top (opaque) to bottom (transparent)
     for y in range(shadow_height):
-        alpha = int(255 * ((shadow_height - y) / shadow_height))  # Opaque at the top, transparent at the bottom
-        draw.line([(0, y), (width, y)], fill=(0, 0, 0, alpha)) #i think here where i can change color of shadow
-    
-    # Reduce the opacity of the entire shadow by 50%
-    shadow = shadow.convert('RGBA')
-    shadow_with_reduced_opacity = Image.new('RGBA', shadow.size)
-    for x in range(shadow.width):
-        for y in range(shadow.height):
-            r, g, b, a = shadow.getpixel((x, y))
-            a = int(a * 0.5)  # Reduce opacity by 50%
-            shadow_with_reduced_opacity.putpixel((x, y), (r, g, b, a))
-    
-    return shadow_with_reduced_opacity
+        alpha = int(255 * ((shadow_height - y) / shadow_height) * 0.5)
+        draw.line([(0, y), (width, y)], fill=(color[0], color[1], color[2], alpha))
+
+    return shadow
+
 
 #Function to crop image to specific size and add logo (if it's value not empty) and arrow (if image is rectangle)
-def add_logo_to_image(image_source_path, logo_path, image_output_path, logo_position, image_width, image_height, crop_position, logo_margin, logo_decrease_percent, arrow_path=None, arrow_position='bottom-right', logo_opacity=None,square=None, city=None, imageone=None, title=None, lang=None):
+def add_logo_to_image(
+    image_source_path, logo_path, image_output_path, logo_position,
+    image_width, image_height, crop_position, logo_margin, logo_decrease_percent,
+    arrow_path=None, arrow_position='bottom-right', logo_opacity=None,
+    square=None, city=None, imageone=None, title=None, lang=None
+):
     # Check if the image source and logo files exist
     if not os.path.isfile(image_source_path):
         raise FileNotFoundError(f"Image source file '{image_source_path}' not found.")
-    if logo_path:
-        if not os.path.isfile(logo_path):
-            raise FileNotFoundError(f"Logo file '{logo_path}' not found.")
-    
+    if logo_path and not os.path.isfile(logo_path):
+        raise FileNotFoundError(f"Logo file '{logo_path}' not found.")
     if arrow_path:
         if not os.path.isfile(arrow_path):
             raise FileNotFoundError(f"Arrow file '{arrow_path}' not found.")
         if not arrow_path.lower().endswith('.png'):
             raise ValueError("The arrow must be in PNG format.")
-    
     if not os.access(os.path.dirname(image_output_path), os.W_OK):
-        raise PermissionError(f"Cannot write to the directory '{os.path.dirname(image_output_path)}'.")
+        os.makedirs(os.path.dirname(image_output_path), exist_ok=True)
+    if logo_path and not logo_path.lower().endswith('.png'):
+        raise ValueError("The logo must be in PNG format.")
+
+    # Open the image (convert high-res if needed)
+    image = convert_to_hd(image_source_path) if is_high_res(image_source_path) else Image.open(image_source_path)
+    image = image.convert('RGBA')
+
     if logo_path:
-        if not logo_path.lower().endswith('.png'):
-            raise ValueError("The logo must be in PNG format.")
-    
-    # Open the image and logo, if image is HighRes, we should lower size to proprely crop the image
-    if is_high_res(image_source_path):
-        image=convert_to_hd(image_source_path)
-    else:
-        image = Image.open(image_source_path)
-    if logo_path:
-        logo = Image.open(logo_path)
-    
-    # Resize the image if it's smaller than specified dimensions
-    if image.size[0] < image_width or image.size[1] < image_height:
-        # Calculate new dimensions
+        logo = Image.open(logo_path).convert('RGBA')
+
+    # Resize image if smaller than desired
+    if image.width < image_width or image.height < image_height:
         new_width = max(image_width, 1000)
         new_height = max(image_height, 1000)
-        
-        if image.size[0] < new_width:
-            aspect_ratio = image.size[1] / image.size[0]
+        if image.width < new_width:
+            aspect_ratio = image.height / image.width
             new_width = image_width
             new_height = int(new_width * aspect_ratio)
-        elif image.size[1] < new_height:
-            aspect_ratio = image.size[0] / image.size[1]
+        elif image.height < new_height:
+            aspect_ratio = image.width / image.height
             new_height = image_height
             new_width = int(new_height * aspect_ratio)
-        
-        image = image.resize((new_width, new_height), Image.ANTIALIAS)
-    
-    # Crop the image to the specified dimensions
-    if crop_position in ['right', 'left', 'center']:
-        if crop_position == 'right':
-            image = image.crop((image.size[0] - image_width, 0, image.size[0], image_height))
-        elif crop_position == 'left':
-            image = image.crop((0, 0, image_width, image_height))
-        elif crop_position == 'center':
-            left = (image.size[0] - image_width) // 2
-            top = (image.size[1] - image_height) // 2
-            image = image.crop((left, top, left + image_width, top + image_height))
+        image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+    # Crop image
+    if crop_position == 'right':
+        left = image.width - image_width
+        top = 0
+    elif crop_position == 'left':
+        left = 0
+        top = 0
+    elif crop_position == 'center':
+        left = (image.width - image_width) // 2
+        top = (image.height - image_height) // 2
     else:
         raise ValueError("Invalid crop position. Choose either 'right', 'left', or 'center'.")
-    
-    # Resize the image to match the specified dimensions (if needed)
-    image = image.resize((image_width, image_height), Image.ANTIALIAS)
+    image = image.crop((left, top, left + image_width, top + image_height))
+    image = image.resize((image_width, image_height), Image.Resampling.LANCZOS)
 
-     # Add gradient shadow to the bottom of the image (gradient file or draw it)
-    if image_height==1080 and image_width==1080:
-        sh_path=os.path.join(get_dir(),'shadows/ShadowSB.png')
-        # Check if file exists and is readable
-        if not os.path.isfile(sh_path):
-            raise FileNotFoundError(f"The file '{sh_path}' does not exist.")
-        if not os.access(sh_path, os.R_OK):
-            raise PermissionError(f"The file '{sh_path}' cannot be read due to insufficient permissions.")
-        shadowsb = Image.open(sh_path)
-        image.paste(shadowsb , shadowsb if shadowsb.mode == 'RGBA' else None)
-    elif image_height==1350 and image_width==1080:
-        sh_path=os.path.join(get_dir(),'shadows/ShadowT.png')
-        # Check if file exists and is readable
-        if not os.path.isfile(sh_path):
-            raise FileNotFoundError(f"The file '{sh_path}' does not exist.")
-        if not os.access(sh_path, os.R_OK):
-            raise PermissionError(f"The file '{sh_path}' cannot be read due to insufficient permissions.")
-        shadowsb = Image.open(sh_path)
-        image.paste(shadowsb , shadowsb if shadowsb.mode == 'RGBA' else None)
+    # Add gradient shadow
+    if image_height == 1080 and image_width == 1080:
+        sh_path = os.path.join(get_dir(), 'shadows', 'ShadowSB.png')
+    elif image_height == 1350 and image_width == 1080:
+        sh_path = os.path.join(get_dir(), 'shadows', 'ShadowT.png')
     else:
-        shadow_height = int(image_height * 0.1)  # Shadow height can be adjusted as needed
+        sh_path = None
+
+    if sh_path:
+        shadowsb = Image.open(sh_path).convert('RGBA')
+        image.paste(shadowsb, (0,0), shadowsb)
+    else:
+        shadow_height = int(image_height * 0.1)
         shadow = create_gradient_shadow_bottom(image_width, shadow_height)
         image.paste(shadow, (0, image_height - shadow_height), shadow)
 
-    #if image is 1080x1080 and fist one in Diapo, add title for 1st image in slide
-    if square=='on' and imageone==0 and image_height==1080 and image_width==1080:
-        # Add gradient shadow to the top of the image
-        shadow_height = int(image_height * 0.6)  # Adjust shadow height as needed
+    # Optional top shadow for first square image
+    if square == 'on' and imageone == 0 and image_width == 1080 and image_height == 1080:
+        shadow_height = int(image_height * 0.6)
         shadow = create_gradient_shadow_top(image_width, shadow_height)
         image.paste(shadow, (0, 0), shadow)
 
+    # Handle logo
     if logo_path:
-
-        # Validate the logo decrease percentage
         if logo_decrease_percent < 0 or logo_decrease_percent > 90:
             raise ValueError("The logo decrease percentage must be between 0 and 90.")
-        
-        # Calculate the new logo size after decreasing
         decrease_factor = (100 - logo_decrease_percent) / 100
-        new_logo_width = int(logo.size[0] * decrease_factor)
-        new_logo_height = int(logo.size[1] * decrease_factor)
-        
-        # Resize the logo to the decreased size
-        logo = logo.resize((new_logo_width, new_logo_height), Image.ANTIALIAS)
-        
-        # Ensure the logo size plus margins fits within the image
-        if new_logo_width + 2 * logo_margin > image_width or new_logo_height + 2 * logo_margin > image_height:
-            raise ValueError("The logo with margins cannot be larger than the image size.")
-        
-        # Apply opacity to the logo if specified
+        new_logo_width = int(logo.width * decrease_factor)
+        new_logo_height = int(logo.height * decrease_factor)
+        logo = logo.resize((new_logo_width, new_logo_height), Image.Resampling.LANCZOS)
+
         if logo_opacity is not None:
-            if not (0 <= logo_opacity <= 255):
-                raise ValueError("Opacity must be between 0 (fully transparent) and 255 (fully opaque).")
-            
-            if logo.mode != 'RGBA':
-                logo = logo.convert('RGBA')
-            
-            # Adjust the opacity
             alpha = logo.split()[3]
             alpha = alpha.point(lambda p: p * (logo_opacity / 255.0))
             logo.putalpha(alpha)
-        
-        # Calculate the position to place the logo considering the margin
-        if logo_position == 'top-left':
-            logo_position = (logo_margin, logo_margin)
-        elif logo_position == 'top-right':
-            logo_position = (image.size[0] - new_logo_width - logo_margin, logo_margin)
-        elif logo_position == 'bottom-left':
-            logo_position = (logo_margin, image.size[1] - new_logo_height - logo_margin)
-        elif logo_position == 'bottom-right':
-            logo_position = (image.size[0] - new_logo_width - logo_margin, image.size[1] - new_logo_height - logo_margin)
-        elif logo_position == 'center':
-            logo_position = ((image.size[0] - new_logo_width) // 2, (image.size[1] - new_logo_height) // 2)
-        elif logo_position == 'top-center':
-            logo_position = ((image.size[0] - new_logo_width) // 2, logo_margin)
-        elif logo_position == 'bottom-center':
-            logo_position = ((image.size[0] - new_logo_width) // 2, image.size[1] - new_logo_height - logo_margin)
-        else:
-            raise ValueError("Invalid logo position. Choose either 'top-left', 'top-right', 'bottom-left', 'bottom-right', 'center', 'top-center', or 'bottom-center'.")
 
-        # Paste the logo onto the cropped image
-        image.paste(logo, logo_position, logo if logo.mode == 'RGBA' else None)
-    else:
-        # Validate the logo decrease percentage
-        if logo_decrease_percent < 0 or logo_decrease_percent > 90:
-            raise ValueError("The logo decrease percentage must be between 0 and 90.")
-        
-        # Calculate decrease factor for arrow
-        decrease_factor = (100 - logo_decrease_percent) / 100
+        # Determine logo position
+        positions = {
+            'top-left': (logo_margin, logo_margin),
+            'top-right': (image.width - new_logo_width - logo_margin, logo_margin),
+            'bottom-left': (logo_margin, image.height - new_logo_height - logo_margin),
+            'bottom-right': (image.width - new_logo_width - logo_margin, image.height - new_logo_height - logo_margin),
+            'center': ((image.width - new_logo_width) // 2, (image.height - new_logo_height) // 2),
+            'top-center': ((image.width - new_logo_width) // 2, logo_margin),
+            'bottom-center': ((image.width - new_logo_width) // 2, image.height - new_logo_height - logo_margin)
+        }
+        if logo_position not in positions:
+            raise ValueError("Invalid logo position.")
+        pos = positions[logo_position]
+        image.paste(logo, pos, logo)
 
-    #if size is 1080x1080 and 1st image draw title and logo title logo
-    if square=='on' and imageone==0 and image_width==1080 and image_height==1080:
-        sh_path=os.path.join(get_dir(),'shadows/ShadowST.png')
-        # Check if file exists and is readable
-        if not os.path.isfile(sh_path):
-            raise FileNotFoundError(f"The file '{sh_path}' does not exist.")
-        if not os.access(sh_path, os.R_OK):
-            raise PermissionError(f"The file '{sh_path}' cannot be read due to insufficient permissions.")
-        # Open the image
-        ltitle = Image.open(sh_path)
-        #paste image
-        image.paste(ltitle, ltitle if ltitle.mode == 'RGBA' else None)
+    # Optional title/logo overlays for first square image
+    if square == 'on' and imageone == 0 and image_width == 1080 and image_height == 1080:
+        for fname in ['shadows/ShadowST.png', 'logo360/LogoTitle.png']:
+            path = os.path.join(get_dir(), fname)
+            if os.path.isfile(path):
+                overlay = Image.open(path).convert('RGBA')
+                image.paste(overlay, (0, 0), overlay)
 
-        st_path=os.path.join(get_dir(),'logo360/LogoTitle.png')
-        # Check if file exists and is readable
-        if not os.path.isfile(st_path):
-            raise FileNotFoundError(f"The file '{st_path}' does not exist.")
-        if not os.access(st_path, os.R_OK):
-            raise PermissionError(f"The file '{st_path}' cannot be read due to insufficient permissions.")
-        # Open the image        
-        ltitle=Image.open(st_path)
-        #paste image
-        image.paste(ltitle, ltitle if ltitle.mode == 'RGBA' else None)
+        if title:
+            if lang == 'fr':
+                font_path = os.path.join(get_dir(), 'fonts', 'DIN-Condensed-Bold.ttf')
+                font_size = 100
+                add_title_to_image(image, title, font_path, font_size, 'white', 'center', 50, 30, 120)
+            elif lang == 'ar':
+                font_path = os.path.join(get_dir(), 'fonts', 'ArbFONTS-Somar-Bold.otf')
+                font_size = 100
+                add_title_to_image(image, title, font_path, font_size, 'white', 'center', 50, -10, 80)
 
-        if lang=='fr':
-
-            #font selection
-            font_path=os.path.join(get_dir(),'fonts/DIN-Condensed-Bold.ttf')
-            font_size=100
-            if not os.path.isfile(font_path):
-                raise FileNotFoundError(f"Font file '{font_path}' not found.")
-
-            # Load the font
-            try:
-                font = ImageFont.truetype(font_path, font_size)
-            except IOError as e:
-                raise IOError(f"Could not load font '{font_path}': {e}")
-            add_title_to_image(image,title,font_path,font_size,'white','center',50,30,120)
-
-        elif lang=='ar':
-
-            #font selection
-            font_size=100
-            font_path=os.path.join(get_dir(),'fonts/ArbFONTS-Somar-Bold.otf')
-            if not os.path.isfile(font_path):
-                raise FileNotFoundError(f"Font file '{font_path}' not found.")
-
-            # Load the font
-            try:
-                font = ImageFont.truetype(font_path, font_size)
-            except IOError as e:
-                raise IOError(f"Could not load font '{font_path}': {e}")
-            add_title_to_image(image,title,font_path,font_size,'white','center',50,-10,80)
-    
-    # Optionally add an arrow
+    # Optional arrow
     if arrow_path:
-        arrow = Image.open(arrow_path)
-        if not arrow_path.lower().endswith('.png'):
-            raise ValueError("The arrow must be in PNG format.")
-        
-        # Calculate the new arrow size after decreasing
-        arrow_width = int(arrow.size[0] * decrease_factor)
-        arrow_height = int(arrow.size[1] * decrease_factor)
-        arrow = arrow.resize((arrow_width, arrow_height), Image.ANTIALIAS)
-        
-        # Apply opacity to the arrow if specified
+        arrow = Image.open(arrow_path).convert('RGBA')
+        arrow_width = int(arrow.width * decrease_factor)
+        arrow_height = int(arrow.height * decrease_factor)
+        arrow = arrow.resize((arrow_width, arrow_height), Image.Resampling.LANCZOS)
         if logo_opacity is not None:
-            if arrow.mode != 'RGBA':
-                arrow = arrow.convert('RGBA')
-            
-            # Adjust the opacity
             alpha = arrow.split()[3]
             alpha = alpha.point(lambda p: p * (logo_opacity / 255.0))
             arrow.putalpha(alpha)
-        
-        # Calculate the position to place the arrow considering the margin
-        if arrow_position == 'top-left':
-            arrow_position = (logo_margin, logo_margin)
-        elif arrow_position == 'top-right':
-            arrow_position = (image.size[0] - arrow_width - logo_margin, logo_margin)
-        elif arrow_position == 'bottom-left':
-            arrow_position = (logo_margin, image.size[1] - arrow_height - logo_margin)
-        elif arrow_position == 'bottom-right':
-            arrow_position = (image.size[0] - arrow_width - logo_margin, image.size[1] - arrow_height - logo_margin)
+
+        arrow_positions = {
+            'top-left': (logo_margin, logo_margin),
+            'top-right': (image.width - arrow_width - logo_margin, logo_margin),
+            'bottom-left': (logo_margin, image.height - arrow_height - logo_margin),
+            'bottom-right': (image.width - arrow_width - logo_margin, image.height - arrow_height - logo_margin)
+        }
+        if arrow_position not in arrow_positions:
+            raise ValueError("Invalid arrow position.")
+        image.paste(arrow, arrow_positions[arrow_position], arrow)
+
+    # Optional city text for 1080x1080
+    if square == 'on' and image_width == 1080 and image_height == 1080 and city:
+        sep_path = os.path.join(get_dir(), 'logo360', 'LogoSep.png')
+        if os.path.isfile(sep_path):
+            sep = Image.open(sep_path).convert('RGBA')
+            image.paste(sep, (0, 0), sep)
+
+        font_size = 53
+        if lang == 'fr':
+            font_path = os.path.join(get_dir(), 'fonts', 'DIN-Condensed-Bold.ttf')
+            y_pos = 1010
+        elif lang == 'ar':
+            font_path = os.path.join(get_dir(), 'fonts', 'ArbFONTS-Somar-Bold.otf')
+            y_pos = 995
         else:
-            raise ValueError("Invalid arrow position. Choose either 'top-left', 'top-right', 'bottom-left', or 'bottom-right'.")
-        
-        # Paste the arrow onto the image
-        image.paste(arrow, arrow_position, arrow if arrow.mode == 'RGBA' else None)
+            font_path = None
 
-    #if size is 1080x1080 draw city text
-    if square=='on' and image_width==1080 and image_height==1080:
-        if city!='':
-            sep_path=os.path.join(get_dir(),'logo360/LogoSep.png')
-            # Check if file exists and is readable
-            if not os.path.isfile(sep_path):
-                raise FileNotFoundError(f"The file '{sep_path}' does not exist.")
-            if not os.access(sep_path, os.R_OK):
-                raise PermissionError(f"The file '{sep_path}' cannot be read due to insufficient permissions.")
-            # Open the image
-            sep = Image.open(sep_path)
-            #paste image
-            image.paste(sep, sep if sep.mode == 'RGBA' else None)
-
-        if lang=='fr' and city!='':
-            #font selection
-            font_size=53
-            font_path=os.path.join(get_dir(),'fonts/DIN-Condensed-Bold.ttf')
-       
-            if not os.path.isfile(font_path):
-                raise FileNotFoundError(f"Font file '{font_path}' not found.")
-
-            # Load the font
-            try:
-                font = ImageFont.truetype(font_path, font_size)
-            except IOError as e:
-                raise IOError(f"Could not load font '{font_path}': {e}")
-            myfont = ImageFont.truetype(font_path,font_size)
+        if font_path:
+            myfont = ImageFont.truetype(font_path, font_size)
             draw = ImageDraw.Draw(image)
-            draw.text((160, 1010), city, font=myfont, fill='white')
-        elif lang=='ar' and city!='':
-            #font selection
-            font_size=53
-            font_path=os.path.join(get_dir(),'fonts/ArbFONTS-Somar-Bold.otf')
-       
-            if not os.path.isfile(font_path):
-                raise FileNotFoundError(f"Font file '{font_path}' not found.")
+            draw.text((160, y_pos), city, font=myfont, fill='white')
 
-            # Load the font
-            try:
-                font = ImageFont.truetype(font_path, font_size)
-            except IOError as e:
-                raise IOError(f"Could not load font '{font_path}': {e}")
-            myfont = ImageFont.truetype(font_path,font_size)
-            draw = ImageDraw.Draw(image)
-            draw.text((160, 995), city, font=myfont, fill='white')
-
-        # draw.text((160, 1010), city, font=myfont, fill='white') ar version
-
-    # Save the output image
+    # Save the final image
     image.save(image_output_path)
+
 
 #batch process multiple images
 def batch_process_images(image_paths, logo_path, image_output_dir, logo_position, image_width, image_height, crop_position, logo_margin, logo_decrease_percent, arrow_path=None, arrow_position='bottom-right', logo_opacity=None, square=None, city=None, title=None, lang=None):
@@ -396,47 +265,41 @@ def batch_process_images(image_paths, logo_path, image_output_dir, logo_position
 
 #For 1080x1080, function to align text to center
 def add_title_to_image(image, text, font_path, font_size, text_color, align='left', margin=10, spacing=0, y_position=None):
-    # Draw on the provided image
     draw = ImageDraw.Draw(image)
-
-    # Load the font
     font = ImageFont.truetype(font_path, font_size)
-
-    # Image dimensions
     image_width, image_height = image.size
-
-    # Calculate available width for text after applying margins
     max_text_width = image_width - 2 * margin
 
-    # Calculate text height to position it vertically, considering y_position if provided
-    lines = []
+    # Wrap text based on available width
     words = text.split()
+    lines = []
     current_line = []
 
-    # Wrap text based on available width
     for word in words:
         current_line.append(word)
-        w, h = draw.textsize(' '.join(current_line), font=font)
+        # Use font.getbbox() to measure text width
+        line_text = ' '.join(current_line)
+        bbox = font.getbbox(line_text)
+        w = bbox[2] - bbox[0]
         if w > max_text_width:
             current_line.pop()
             lines.append(' '.join(current_line))
             current_line = [word]
     lines.append(' '.join(current_line))
 
-    # Calculate the total height of the text block with spacing
-    text_height = sum([draw.textsize(line, font=font)[1] + spacing for line in lines]) - spacing
+    # Calculate total text block height
+    text_height = sum([(font.getbbox(line)[3] - font.getbbox(line)[1]) + spacing for line in lines]) - spacing
 
-    # Set vertical position
-    if y_position is not None:
-        y = y_position
-    else:
-        y = (image_height - text_height) // 2  # Vertical center
+    # Vertical position
+    y = y_position if y_position is not None else (image_height - text_height) // 2
 
-    # Draw each line on the image
+    # Draw each line
     for line in lines:
-        line_width, line_height = draw.textsize(line, font=font)
+        bbox = font.getbbox(line)
+        line_width = bbox[2] - bbox[0]
+        line_height = bbox[3] - bbox[1]
 
-        # Calculate x position based on alignment
+        # Horizontal alignment
         if align == 'left':
             x = margin
         elif align == 'center':
@@ -446,14 +309,11 @@ def add_title_to_image(image, text, font_path, font_size, text_color, align='lef
         else:
             raise ValueError("Invalid alignment value. Use 'left', 'center', or 'right'.")
 
-        # Validate x position
-        if x < 0 or x > image_width - line_width:
-            raise ValueError("Calculated x position is out of image bounds.")
-
         draw.text((x, y), line, font=font, fill=text_color)
         y += line_height + spacing
 
     return image
+
 
 # Function to verify if image is HighRes
 def is_high_res(image_path, min_width=1920, min_height=1080):
@@ -498,8 +358,8 @@ def convert_to_hd(image_path, max_width=1920, max_height=1080):
                 # Calculate the new dimensions while maintaining the aspect ratio
                 new_width, new_height = calculate_new_dimensions(img.width, img.height, max_width, max_height)
                 
-                # Resize the image
-                img_hd = img.resize((new_width, new_height), Image.ANTIALIAS)
+                # Resize the image using Pillow 10 compatible resampling
+                img_hd = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
                 
                 return img_hd
 
@@ -514,54 +374,49 @@ def convert_to_hd(image_path, max_width=1920, max_height=1080):
     
     return None
 
-#Function to add text with highlight word to Post (1080x1350)
-def old_add_title_to_post(image, text, font_path, font_size, text_color, align='left', margin=10, spacing=0, y_position=None, highlight_word=None, highlight_color=None):
+#Function to add text with highlight word to Post (1080x1350): old version
+def old_add_title_to_post(image, text, font_path, font_size, text_color,
+                          align='left', margin=10, spacing=0, y_position=None,
+                          highlight_word=None, highlight_color=None):
     # Convert hex color codes to RGB
     text_color = ImageColor.getrgb(text_color)
     if highlight_color:
         highlight_color = ImageColor.getrgb(highlight_color)
 
-    # Draw on the provided image
     draw = ImageDraw.Draw(image)
-
-    # Load the font
     font = ImageFont.truetype(font_path, font_size)
-
-    # Image dimensions
     image_width, image_height = image.size
-
-    # Calculate available width for text after applying margins
     max_text_width = image_width - 2 * margin
 
-    # Calculate text height to position it vertically, considering y_position if provided
-    lines = []
+    # Wrap text based on available width
     words = text.split()
+    lines = []
     current_line = []
 
-    # Wrap text based on available width
     for word in words:
         current_line.append(word)
-        w, h = draw.textsize(' '.join(current_line), font=font)
-        if w > max_text_width:
+        line_text = ' '.join(current_line)
+        bbox = font.getbbox(line_text)
+        line_width = bbox[2] - bbox[0]
+        if line_width > max_text_width:
             current_line.pop()
             lines.append(' '.join(current_line))
             current_line = [word]
     lines.append(' '.join(current_line))
 
-    # Calculate the total height of the text block with spacing
-    text_height = sum([draw.textsize(line, font=font)[1] + spacing for line in lines]) - spacing
+    # Calculate total text block height
+    text_height = sum([(font.getbbox(line)[3] - font.getbbox(line)[1]) + spacing for line in lines]) - spacing
 
     # Set vertical position
-    if y_position is not None:
-        y = y_position
-    else:
-        y = (image_height - text_height) // 2  # Vertical center
+    y = y_position if y_position is not None else (image_height - text_height) // 2
 
-    # Draw each line on the image
+    # Draw each line
     for line in lines:
-        line_width, line_height = draw.textsize(line, font=font)
+        bbox_line = font.getbbox(line)
+        line_width = bbox_line[2] - bbox_line[0]
+        line_height = bbox_line[3] - bbox_line[1]
 
-        # Calculate x position based on alignment
+        # Horizontal alignment
         if align == 'left':
             x = margin
         elif align == 'center':
@@ -571,53 +426,52 @@ def old_add_title_to_post(image, text, font_path, font_size, text_color, align='
         else:
             raise ValueError("Invalid alignment value. Use 'left', 'center', or 'right'.")
 
-        # Validate x position
-        if x < 0 or x > image_width - line_width:
-            raise ValueError("Calculated x position is out of image bounds.")
-
-        # Draw the line with highlight if necessary
+        # Draw each word with optional highlight
         words_in_line = line.split()
         current_x = x
         for word in words_in_line:
-            word_width, _ = draw.textsize(word, font=font)
-            # Check if this word should be highlighted
-            if word == highlight_word and highlight_color:
+            bbox_word = font.getbbox(word)
+            word_width = bbox_word[2] - bbox_word[0]
+
+            if highlight_word and word == highlight_word and highlight_color:
                 draw.text((current_x, y), word, font=font, fill=highlight_color)
             else:
                 draw.text((current_x, y), word, font=font, fill=text_color)
-            current_x += word_width + draw.textsize(' ', font=font)[0]  # Adding space width
+
+            # Add space width
+            space_bbox = font.getbbox(' ')
+            space_width = space_bbox[2] - space_bbox[0]
+            current_x += word_width + space_width
 
         y += line_height + spacing
 
     return image
 
-def add_title_to_post(image, text, font_path, font_size, text_color, align='left', margin=10, spacing=0, y_position=None, highlight_word=None, highlight_color=None, is_rtl=False):
+#Function to add text with highlight word to Post (1080x1350): new version
+def add_title_to_post(image, text, font_path, font_size, text_color,
+                      align='left', margin=10, spacing=0, y_position=None,
+                      highlight_word=None, highlight_color=None, is_rtl=False):
     # Convert hex color codes to RGB
     text_color = ImageColor.getrgb(text_color)
     if highlight_color:
         highlight_color = ImageColor.getrgb(highlight_color)
 
-    # Draw on the provided image
     draw = ImageDraw.Draw(image)
-
-    # Load the font
     font = ImageFont.truetype(font_path, font_size)
-
-    # Image dimensions
     image_width, image_height = image.size
-
-    # Calculate available width for text after applying margins
     max_text_width = image_width - 2 * margin
 
     # Wrap text based on available width
-    lines = []
     words = text.split()
+    lines = []
     current_line = []
 
     for word in words:
         current_line.append(word)
-        w, h = draw.textsize(' '.join(current_line), font=font)
-        if w > max_text_width:
+        line_text = ' '.join(current_line)
+        bbox = font.getbbox(line_text)
+        line_width = bbox[2] - bbox[0]
+        if line_width > max_text_width:
             current_line.pop()
             lines.append(' '.join(current_line))
             current_line = [word]
@@ -625,23 +479,21 @@ def add_title_to_post(image, text, font_path, font_size, text_color, align='left
 
     # Reverse the order of words in each line for RTL support
     if is_rtl:
-        lines = [line.split()[::-1] for line in lines]  # Reverse words in each line
-        lines = [' '.join(line) for line in lines]  # Rejoin words into lines
+        lines = [' '.join(line.split()[::-1]) for line in lines]
 
-    # Calculate the total height of the text block with spacing
-    text_height = sum([draw.textsize(line, font=font)[1] + spacing for line in lines]) - spacing
+    # Calculate total text block height
+    text_height = sum([(font.getbbox(line)[3] - font.getbbox(line)[1]) + spacing for line in lines]) - spacing
 
     # Set vertical position
-    if y_position is not None:
-        y = y_position
-    else:
-        y = (image_height - text_height) // 2  # Vertical center
+    y = y_position if y_position is not None else (image_height - text_height) // 2
 
-    # Draw each line on the image
+    # Draw each line
     for line in lines:
-        line_width, line_height = draw.textsize(line, font=font)
+        bbox_line = font.getbbox(line)
+        line_width = bbox_line[2] - bbox_line[0]
+        line_height = bbox_line[3] - bbox_line[1]
 
-        # Calculate x position based on alignment
+        # Horizontal alignment
         if align == 'left':
             x = margin if not is_rtl else image_width - line_width - margin
         elif align == 'center':
@@ -651,53 +503,53 @@ def add_title_to_post(image, text, font_path, font_size, text_color, align='left
         else:
             raise ValueError("Invalid alignment value. Use 'left', 'center', or 'right'.")
 
-        # Validate x position
-        if x < 0 or x > image_width - line_width:
-            raise ValueError("Calculated x position is out of image bounds.")
-
-        # Draw the line with highlight if necessary
+        # Draw each word with optional highlight
         words_in_line = line.split()
         current_x = x
         for word in words_in_line:
-            word_width, _ = draw.textsize(word, font=font)
+            bbox_word = font.getbbox(word)
+            word_width = bbox_word[2] - bbox_word[0]
 
-            # Check if this word should be highlighted
-            if re.search(rf"\b{re.escape(word)}\b", highlight_word) and highlight_color:
+            if highlight_word and re.search(rf"\b{re.escape(word)}\b", highlight_word) and highlight_color:
                 draw.text((current_x, y), word, font=font, fill=highlight_color)
             else:
                 draw.text((current_x, y), word, font=font, fill=text_color)
-            current_x += word_width + draw.textsize(' ', font=font)[0]  # Adding space width
+
+            # Add space width
+            space_bbox = font.getbbox(' ')
+            space_width = space_bbox[2] - space_bbox[0]
+            current_x += word_width + space_width
 
         y += line_height + spacing
 
     return image
 
-#Function to create post 1080x1350
-def create_post(image_source_path, image_output_path, image_width, image_height, crop_position, title, word, lang, title_size, title_spacing, title_color,word_color, mytag=None):
-    # Check if the image source and logo files exist
-    logo_path=os.path.join(get_dir(),'logo360/LogoP.png')
+# function to create image file or generate preview of post
+def create_post(image_source_path, image_output_path, image_width, image_height, crop_position,
+                title, word, lang, title_size, title_spacing, title_color, word_color, mytag=None):
+
+    logo_path = os.path.join(get_dir(), 'logo360/LogoP.png')
     if not os.path.isfile(image_source_path):
         raise FileNotFoundError(f"Image source file '{image_source_path}' not found.")
     if not os.path.isfile(logo_path):
         raise FileNotFoundError(f"Logo file '{logo_path}' not found.")
 
-    if not os.access(os.path.dirname(image_output_path), os.W_OK):
+    if not os.access(os.path.dirname(image_output_path), os.W_OK) and image_output_path!="preview":
         raise PermissionError(f"Cannot write to the directory '{os.path.dirname(image_output_path)}'.")
 
     if not logo_path.lower().endswith('.png'):
         raise ValueError("The logo must be in PNG format.")
-
-    # Open the image and logo, if image is HighRes, we should lower size to proprely crop the image
+ 
+    # Open the image and logo
     if is_high_res(image_source_path):
-        image=convert_to_hd(image_source_path)
+        image = convert_to_hd(image_source_path)
     else:
         image = Image.open(image_source_path)
 
     logo = Image.open(logo_path)
 
-    # Resize the image if it's smaller than specified dimensions
+    # Resize the image if smaller than desired dimensions
     if image.size[0] < image_width or image.size[1] < image_height:
-        # Calculate new dimensions
         new_width = max(image_width, 1000)
         new_height = max(image_height, 1000)
 
@@ -710,114 +562,86 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
             new_height = image_height
             new_width = int(new_height * aspect_ratio)
 
-        image = image.resize((new_width, new_height), Image.ANTIALIAS)
+        image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-    # Crop the image to the specified dimensions
-    if crop_position in ['right', 'left', 'center']:
-        if crop_position == 'right':
-            image = image.crop((image.size[0] - image_width, 0, image.size[0], image_height))
-        elif crop_position == 'left':
-            image = image.crop((0, 0, image_width, image_height))
-        elif crop_position == 'center':
-            left = (image.size[0] - image_width) // 2
-            top = (image.size[1] - image_height) // 2
-            image = image.crop((left, top, left + image_width, top + image_height))
-    else:
+    # Crop the image
+    if crop_position not in ['right', 'left', 'center']:
         raise ValueError("Invalid crop position. Choose either 'right', 'left', or 'center'.")
+    if crop_position == 'right':
+        image = image.crop((image.size[0] - image_width, 0, image.size[0], image_height))
+    elif crop_position == 'left':
+        image = image.crop((0, 0, image_width, image_height))
+    elif crop_position == 'center':
+        left = (image.size[0] - image_width) // 2
+        top = (image.size[1] - image_height) // 2
+        image = image.crop((left, top, left + image_width, top + image_height))
 
-    # Resize the image to match the specified dimensions (if needed)
-    image = image.resize((image_width, image_height), Image.ANTIALIAS)
+    # Resize to exact dimensions
+    image = image.resize((image_width, image_height), Image.Resampling.LANCZOS)
 
-     # Add gradient shadow to the bottom of the image (gradient file or draw it)
-    sh_path=os.path.join(get_dir(),'shadows/ShadowPS.png')
-    # Check if file exists and is readable
+    # Add gradient shadow
+    sh_path = os.path.join(get_dir(), 'shadows/ShadowPS.png')
     if not os.path.isfile(sh_path):
         raise FileNotFoundError(f"The file '{sh_path}' does not exist.")
     if not os.access(sh_path, os.R_OK):
         raise PermissionError(f"The file '{sh_path}' cannot be read due to insufficient permissions.")
     shadowsb = Image.open(sh_path)
-    image.paste(shadowsb , shadowsb if shadowsb.mode == 'RGBA' else None)
+    image.paste(shadowsb, shadowsb if shadowsb.mode == 'RGBA' else None)
 
-    # Paste the logo onto the cropped image
+    # Paste the logo
     image.paste(logo, None, logo if logo.mode == 'RGBA' else None)
-    font_path=''
-    if lang=='fr':
-        font_path=os.path.join(get_dir(),'fonts/DIN-Condensed-Bold.ttf')
+
+    # Add title text
+    font_path = ''
+    if lang == 'fr':
+        font_path = os.path.join(get_dir(), 'fonts/DIN-Condensed-Bold.ttf')
         if not os.path.isfile(font_path):
             raise FileNotFoundError(f"Font file '{font_path}' not found.")
-        #add_title_to_post(image,title,font_path,title_size,title_color,"center",0,title_spacing,980,word,word_color)
-        add_title_to_post(image,title,font_path,title_size,title_color,"center",30,title_spacing,980,word,word_color,False)
-
-    elif lang=='ar':
-        font_path=os.path.join(get_dir(),'fonts/ArbFONTS-Somar-Bold.otf')
-
+        add_title_to_post(image, title, font_path, title_size, title_color,
+                          "center", 30, title_spacing, 980, word, word_color, is_rtl=False)
+    elif lang == 'ar':
+        font_path = os.path.join(get_dir(), 'fonts/ArbFONTS-Somar-Bold.otf')
         if not os.path.isfile(font_path):
             raise FileNotFoundError(f"Font file '{font_path}' not found.")
-        add_title_to_post(image,title,font_path,title_size,title_color,"center",30,title_spacing,920,word,word_color,True)
+        add_title_to_post(image, title, font_path, title_size, title_color,
+                          "center", 30, title_spacing, 940, word, word_color, is_rtl=True)
     else:
-        raise ValueError("Must be fr or fr")
-    
-    #add tag (Archive or Illustration)
-    if mytag=="archive" and lang=="fr":
-        tag_path=os.path.join(get_dir(),'logo360/ARC.png')
-        # Check if file exists and is readable
+        raise ValueError("Language must be 'fr' or 'ar'.")
+
+    # Add tag (Archive or Illustration)
+    tag_map = {
+        ("archive", "fr"): 'logo360/ARC.png',
+        ("archive", "ar"): 'logo360/ARCAR.png',
+        ("illustration", "fr"): 'logo360/IL.png',
+        ("illustration", "ar"): 'logo360/ILAR.png'
+    }
+    if mytag in ["archive", "illustration"] and (mytag, lang) in tag_map:
+        tag_path = os.path.join(get_dir(), tag_map[(mytag, lang)])
         if not os.path.isfile(tag_path):
             raise FileNotFoundError(f"The file '{tag_path}' does not exist.")
         if not os.access(tag_path, os.R_OK):
             raise PermissionError(f"The file '{tag_path}' cannot be read due to insufficient permissions.")
-        # Open the image
         itag = Image.open(tag_path)
-        #paste image
-        image.paste(itag, itag if itag.mode == 'RGBA' else None)
-    elif mytag=="archive" and lang=="ar":
-        tag_path=os.path.join(get_dir(),'logo360/ARCAR.png')
-        # Check if file exists and is readable
-        if not os.path.isfile(tag_path):
-            raise FileNotFoundError(f"The file '{tag_path}' does not exist.")
-        if not os.access(tag_path, os.R_OK):
-            raise PermissionError(f"The file '{tag_path}' cannot be read due to insufficient permissions.")
-        # Open the image
-        itag = Image.open(tag_path)
-        #paste image
-        image.paste(itag, itag if itag.mode == 'RGBA' else None)
-    elif mytag=="illustration" and lang=="fr":
-        tag_path=os.path.join(get_dir(),'logo360/IL.png')
-        # Check if file exists and is readable
-        if not os.path.isfile(tag_path):
-            raise FileNotFoundError(f"The file '{tag_path}' does not exist.")
-        if not os.access(tag_path, os.R_OK):
-            raise PermissionError(f"The file '{tag_path}' cannot be read due to insufficient permissions.")
-        # Open the image
-        itag = Image.open(tag_path)
-        #paste image
-        image.paste(itag, itag if itag.mode == 'RGBA' else None)
-    elif mytag=="illustration" and lang=="ar":
-        tag_path=os.path.join(get_dir(),'logo360/ILAR.png')
-        # Check if file exists and is readable
-        if not os.path.isfile(tag_path):
-            raise FileNotFoundError(f"The file '{tag_path}' does not exist.")
-        if not os.access(tag_path, os.R_OK):
-            raise PermissionError(f"The file '{tag_path}' cannot be read due to insufficient permissions.")
-        # Open the image
-        itag = Image.open(tag_path)
-        #paste image
         image.paste(itag, itag if itag.mode == 'RGBA' else None)
 
-    # Ensure the output directory exists
-    if not os.path.exists(image_output_path):
-        os.makedirs(image_output_path)
+    # PREVIEW MODE
+    if image_output_path == "preview":
+            return image
 
-    output_path = os.path.join(image_output_path, f"processed_image.png")
+    # Ensure output directory exists
+    os.makedirs(image_output_path, exist_ok=True)
+    output_path = os.path.join(image_output_path, "processed_image.png")
 
-    # Save the output image
+    # Save the final image
     image.save(output_path)
 
-#Function to create footix
-def footix (image_source_path, image_output_path, crop_position):
 
-    logo_path=os.path.join(get_dir(),'logo360/Footix.png')
+#Function to create footix image
+def footix(image_source_path, image_output_path, crop_position):
 
-    # Check if the image source and logo files exist
+    logo_path = os.path.join(get_dir(), 'logo360/Footix.png')
+
+    # Check if the image source and logo exist
     if not os.path.isfile(image_source_path):
         raise FileNotFoundError(f"Image source file '{image_source_path}' not found.")
     if not os.path.isfile(logo_path):
@@ -826,44 +650,49 @@ def footix (image_source_path, image_output_path, crop_position):
         raise PermissionError(f"Cannot write to the directory '{os.path.dirname(image_output_path)}'.")
     if not logo_path.lower().endswith('.png'):
         raise ValueError("The logo must be in PNG format.")
-    # Open the image and logo, if image is HighRes, we should lower size to proprely crop the image
+
+    # Open image and logo
     if is_high_res(image_source_path):
-        image=convert_to_hd(image_source_path)
+        image = convert_to_hd(image_source_path)
     else:
         image = Image.open(image_source_path)
 
     logo = Image.open(logo_path)
 
-    # Resize the image if it's smaller than specified dimensions
-    if image.size[0] < 1920 or image.size[1] < 1080:
-        # Calculate new dimensions
-        new_width = max(1920, 1000)
-        new_height = max(1080, 1000)
-        
-        if image.size[0] < new_width:
-            aspect_ratio = image.size[1] / image.size[0]
-            new_height = int(1920 * aspect_ratio)
-        elif image.size[1] < new_height:
-            aspect_ratio = image.size[0] / image.size[1]
-            new_width = int(1080 * aspect_ratio)
-        
-        image = image.resize((new_width, new_height), Image.ANTIALIAS)
-
-    # Crop the image to the specified dimensions
-    if crop_position in ['right', 'left', 'center']:
-        if crop_position == 'right':
-            image = image.crop((image.size[0] - 1920, 0, image.size[0], 1080))
-        elif crop_position == 'left':
-            image = image.crop((0, 0, 1920, 1080))
-        elif crop_position == 'center':
-            left = (image.size[0] - 1920) // 2
-            top = (image.size[1] - 1080) // 2
-            image = image.crop((left, top, left + 1920, top + 1080))
+    # Resize if smaller than 1920x1080
+    target_width, target_height = 1920, 1080
+    if image.width < target_width or image.height < target_height:
+        aspect_ratio = image.width / image.height
+        if image.width < target_width:
+            new_width = target_width
+            new_height = int(target_width / aspect_ratio)
+        elif image.height < target_height:
+            new_height = target_height
+            new_width = int(target_height * aspect_ratio)
         else:
-            raise ValueError("Invalid crop position. Choose either 'right', 'left', or 'center'.")
-        
-    image.paste(logo, logo if logo.mode == 'RGBA' else None)
-    image_output=os.path.join(image_output_path, "footix.png")
+            new_width, new_height = image.width, image.height
 
-    # Save the output image
+        image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+    # Crop to target dimensions
+    if crop_position not in ['right', 'left', 'center']:
+        raise ValueError("Invalid crop position. Choose either 'right', 'left', or 'center'.")
+
+    if crop_position == 'right':
+        image = image.crop((image.width - target_width, 0, image.width, target_height))
+    elif crop_position == 'left':
+        image = image.crop((0, 0, target_width, target_height))
+    elif crop_position == 'center':
+        left = (image.width - target_width) // 2
+        top = (image.height - target_height) // 2
+        image = image.crop((left, top, left + target_width, top + target_height))
+
+    # Paste the logo
+    image.paste(logo, logo if logo.mode == 'RGBA' else None)
+
+    # Ensure output directory exists
+    os.makedirs(image_output_path, exist_ok=True)
+    image_output = os.path.join(image_output_path, "footix.png")
+
+    # Save the output
     image.save(image_output)
