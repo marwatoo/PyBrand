@@ -2,7 +2,6 @@
 
 #Created by marwa BIFISSE with the help of Chatgpt, the enemy of humanity
 
-
 #Import Pillow to create and generate images
 from PIL import Image, ImageOps, ImageDraw, ImageFont, ImageColor, UnidentifiedImageError #some function to manipulate images using Pillow 
 
@@ -220,8 +219,13 @@ def add_logo_to_image(
             draw = ImageDraw.Draw(image)
             draw.text((160, y_pos), city, font=myfont, fill='white')
 
-    # Save the final image
-    image.save(image_output_path)
+    # Flatten RGBA to RGB with black background
+    background_color = (0, 0, 0)  # background
+    rgb_image = Image.new("RGB", image.size, background_color)
+    rgb_image.paste(image, mask=image.split()[3])  # merge alpha channel
+
+    # Save as JPEG
+    rgb_image.save(image_output_path, format='JPEG', quality=100)
 
 
 #batch process multiple images
@@ -240,7 +244,7 @@ def batch_process_images(image_paths, logo_path, image_output_dir, logo_position
         current_arrow_path = arrow_path if (i < len(image_paths) - 1) and (len(image_paths) > 1) else None
         
         # Construct the output path for the current image
-        output_path = os.path.join(image_output_dir, f"processed_image_{i + 1}.png")
+        output_path = os.path.join(image_output_dir, f"processed_image_{i + 1}.jpg")
         
         # Call the add_logo_to_image function
         add_logo_to_image(
@@ -447,79 +451,95 @@ def old_add_title_to_post(image, text, font_path, font_size, text_color,
 
     return image
 
-#Function to add text with highlight word to Post (1080x1350): new version
-def add_title_to_post(image, text, font_path, font_size, text_color,
-                      align='left', margin=10, spacing=0, y_position=None,
-                      highlight_word=None, highlight_color=None, is_rtl=False):
-    # Convert hex color codes to RGB
+def add_title_to_post(
+    image,
+    text,
+    font_path,
+    font_size,
+    text_color,
+    align="left",
+    margin=10,
+    spacing=0,
+    y_position=None,
+    highlight_word=None,
+    highlight_color=None,
+    is_rtl=False,
+):
+    # Convert hex colors
     text_color = ImageColor.getrgb(text_color)
     if highlight_color:
         highlight_color = ImageColor.getrgb(highlight_color)
 
     draw = ImageDraw.Draw(image)
     font = ImageFont.truetype(font_path, font_size)
+
     image_width, image_height = image.size
     max_text_width = image_width - 2 * margin
 
-    # Wrap text based on available width
+    # Wrap text
     words = text.split()
     lines = []
     current_line = []
 
     for word in words:
         current_line.append(word)
-        line_text = ' '.join(current_line)
-        bbox = font.getbbox(line_text)
-        line_width = bbox[2] - bbox[0]
+        line_text = " ".join(current_line)
+        line_width = font.getbbox(line_text)[2]
+
         if line_width > max_text_width:
             current_line.pop()
-            lines.append(' '.join(current_line))
+            lines.append(" ".join(current_line))
             current_line = [word]
-    lines.append(' '.join(current_line))
 
-    # Reverse the order of words in each line for RTL support
+    if current_line:
+        lines.append(" ".join(current_line))
+
+    # RTL support
     if is_rtl:
-        lines = [' '.join(line.split()[::-1]) for line in lines]
+        lines = [" ".join(line.split()[::-1]) for line in lines]
 
-    # Calculate total text block height
-    text_height = sum([(font.getbbox(line)[3] - font.getbbox(line)[1]) + spacing for line in lines]) - spacing
+    # Use font metrics for consistent line height
+    ascent, descent = font.getmetrics()
+    line_height = ascent + descent
 
-    # Set vertical position
+    # Total block height
+    text_height = line_height * len(lines) + spacing * (len(lines) - 1)
+
+    # Vertical positioning
     y = y_position if y_position is not None else (image_height - text_height) // 2
 
-    # Draw each line
+    # Draw lines
     for line in lines:
-        bbox_line = font.getbbox(line)
-        line_width = bbox_line[2] - bbox_line[0]
-        line_height = bbox_line[3] - bbox_line[1]
+        line_width = font.getbbox(line)[2]
 
         # Horizontal alignment
-        if align == 'left':
+        if align == "left":
             x = margin if not is_rtl else image_width - line_width - margin
-        elif align == 'center':
+        elif align == "center":
             x = (image_width - line_width) // 2
-        elif align == 'right':
+        elif align == "right":
             x = image_width - line_width - margin if not is_rtl else margin
         else:
-            raise ValueError("Invalid alignment value. Use 'left', 'center', or 'right'.")
+            raise ValueError("Invalid alignment value")
 
-        # Draw each word with optional highlight
-        words_in_line = line.split()
         current_x = x
-        for word in words_in_line:
-            bbox_word = font.getbbox(word)
-            word_width = bbox_word[2] - bbox_word[0]
 
-            if highlight_word and re.search(rf"\b{re.escape(word)}\b", highlight_word) and highlight_color:
+        for word in line.split():
+            word_width = font.getbbox(word)[2]
+
+            if (
+                highlight_word
+                and highlight_color
+                and re.fullmatch(rf"{re.escape(word)}", highlight_word)
+            ):
                 draw.text((current_x, y), word, font=font, fill=highlight_color)
             else:
                 draw.text((current_x, y), word, font=font, fill=text_color)
 
-            # Add space width
-            space_bbox = font.getbbox(' ')
-            space_width = space_bbox[2] - space_bbox[0]
+            space_width = font.getbbox(" ")[2]
             current_x += word_width + space_width
 
+        # Consistent vertical advance
         y += line_height + spacing
 
     return image
@@ -604,7 +624,7 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
         if not os.path.isfile(font_path):
             raise FileNotFoundError(f"Font file '{font_path}' not found.")
         add_title_to_post(image, title, font_path, title_size, title_color,
-                          "center", 30, title_spacing, 940, word, word_color, is_rtl=True)
+                          "center", 30, title_spacing, 920, word, word_color, is_rtl=True)
     else:
         raise ValueError("Language must be 'fr' or 'ar'.")
 
@@ -630,10 +650,15 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
 
     # Ensure output directory exists
     os.makedirs(image_output_path, exist_ok=True)
-    output_path = os.path.join(image_output_path, "processed_image.png")
+    output_path = os.path.join(image_output_path, "processed_image.jpeg")
 
-    # Save the final image
-    image.save(output_path)
+    # Flatten RGBA to RGB with black background
+    background_color = (0, 0, 0)  # background
+    rgb_image = Image.new("RGB", image.size, background_color)
+    rgb_image.paste(image, mask=image.split()[3])  # merge alpha channel
+
+    # Save as JPEG
+    rgb_image.save(output_path, format='JPEG', quality=100)
 
 
 #Function to create footix image
@@ -692,7 +717,12 @@ def footix(image_source_path, image_output_path, crop_position):
 
     # Ensure output directory exists
     os.makedirs(image_output_path, exist_ok=True)
-    image_output = os.path.join(image_output_path, "footix.png")
+    image_output = os.path.join(image_output_path, "footix.jpg")
 
-    # Save the output
-    image.save(image_output)
+    # Flatten RGBA to RGB with black background
+    background_color = (0, 0, 0)  # background
+    rgb_image = Image.new("RGB", image.size, background_color)
+    rgb_image.paste(image, mask=image.split()[3])  # merge alpha channel
+
+    # Save as JPEG
+    rgb_image.save(output_path, format='JPEG', quality=100)
