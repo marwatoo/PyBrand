@@ -1,17 +1,18 @@
 #!/usr/bin/python3
 
-#Created by marwa BIFISSE with the help of Chatgpt, the enemy of humanity
+# Created by marwa BIFISSE (Heavy use of chatgpt)
 
-#Import Pillow to create and generate images
-from PIL import Image, ImageOps, ImageDraw, ImageFont, ImageColor, UnidentifiedImageError #some function to manipulate images using Pillow 
+from PIL import Image, ImageOps, ImageDraw, ImageFont, ImageColor, UnidentifiedImageError
 
-import os # this will allow me to manipulate dirs and files
-import re #Regex
+import os
+import re
 
-#instead of using os.cwd, i created this function to return full path of executed script, so i can load elements correctly
+# Instead of using os.cwd, i created this function to return full path of executed script, so i can load elements correctly
+
 from files import get_dir 
 
-#get image resolution in pixels (x,y)
+# Get image resolution in pixels (x,y)
+
 def get_image_resolution(image_path):
         # Check if file exists and is readable
     if not os.path.isfile(image_path):
@@ -23,8 +24,11 @@ def get_image_resolution(image_path):
     return width, height
 
 # Create a gradient shadow image bottom.
+
 def create_gradient_shadow_bottom(width, shadow_height):
-    # Create an empty RGBA shadow image
+    
+    # Create an empty RGBA shadow
+    
     shadow = Image.new('RGBA', (width, shadow_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(shadow)
 
@@ -35,13 +39,15 @@ def create_gradient_shadow_bottom(width, shadow_height):
 
     return shadow
 
-# Create a gradient shadow image top.
+# Create a top gradient shadow
+
 def create_gradient_shadow_top(width, shadow_height, color=(0, 0, 0)):
 
     shadow = Image.new('RGBA', (width, shadow_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(shadow)
 
     # Draw vertical gradient from top (opaque) to bottom (transparent)
+
     for y in range(shadow_height):
         alpha = int(255 * ((shadow_height - y) / shadow_height) * 0.5)
         draw.line([(0, y), (width, y)], fill=(color[0], color[1], color[2], alpha))
@@ -49,14 +55,16 @@ def create_gradient_shadow_top(width, shadow_height, color=(0, 0, 0)):
     return shadow
 
 
-#Function to crop image to specific size and add logo (if it's value not empty) and arrow (if image is rectangle)
+# Crop image to specific size and add logo and arrow (if image is rectangle)
+
 def add_logo_to_image(
     image_source_path, logo_path, image_output_path, logo_position,
     image_width, image_height, crop_position, logo_margin, logo_decrease_percent,
     arrow_path=None, arrow_position='bottom-right', logo_opacity=None,
     square=None, city=None, imageone=None, title=None, lang=None
 ):
-    # Check if the image source and logo files exist
+    # Checks
+
     if not os.path.isfile(image_source_path):
         raise FileNotFoundError(f"Image source file '{image_source_path}' not found.")
     if logo_path and not os.path.isfile(logo_path):
@@ -71,14 +79,16 @@ def add_logo_to_image(
     if logo_path and not logo_path.lower().endswith('.png'):
         raise ValueError("The logo must be in PNG format.")
 
-    # Open the image (convert high-res if needed)
+    # Open the image (convert highRes to HD if needed)
+
     image = convert_to_hd(image_source_path) if is_high_res(image_source_path) else Image.open(image_source_path)
     image = image.convert('RGBA')
 
     if logo_path:
         logo = Image.open(logo_path).convert('RGBA')
 
-    # Resize image if smaller than desired
+    # Resize image if smaller than the needed size
+
     if image.width < image_width or image.height < image_height:
         new_width = max(image_width, 1000)
         new_height = max(image_height, 1000)
@@ -93,6 +103,7 @@ def add_logo_to_image(
         image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
     # Crop image
+
     if crop_position == 'right':
         left = image.width - image_width
         top = 0
@@ -108,6 +119,7 @@ def add_logo_to_image(
     image = image.resize((image_width, image_height), Image.Resampling.LANCZOS)
 
     # Add gradient shadow
+
     if image_height == 1080 and image_width == 1080:
         sh_path = os.path.join(get_dir(), 'shadows', 'ShadowSB.png')
     elif image_height == 1350 and image_width == 1080:
@@ -124,12 +136,14 @@ def add_logo_to_image(
         image.paste(shadow, (0, image_height - shadow_height), shadow)
 
     # Optional top shadow for first square image
+
     if square == 'on' and imageone == 0 and image_width == 1080 and image_height == 1080:
         shadow_height = int(image_height * 0.6)
         shadow = create_gradient_shadow_top(image_width, shadow_height)
         image.paste(shadow, (0, 0), shadow)
 
     # Handle logo
+
     if logo_path:
         if logo_decrease_percent < 0 or logo_decrease_percent > 90:
             raise ValueError("The logo decrease percentage must be between 0 and 90.")
@@ -144,6 +158,7 @@ def add_logo_to_image(
             logo.putalpha(alpha)
 
         # Determine logo position
+
         positions = {
             'top-left': (logo_margin, logo_margin),
             'top-right': (image.width - new_logo_width - logo_margin, logo_margin),
@@ -159,6 +174,7 @@ def add_logo_to_image(
         image.paste(logo, pos, logo)
 
     # Optional title/logo overlays for first square image
+
     if square == 'on' and imageone == 0 and image_width == 1080 and image_height == 1080:
         for fname in ['shadows/ShadowST.png', 'logo360/LogoTitle.png']:
             path = os.path.join(get_dir(), fname)
@@ -177,6 +193,7 @@ def add_logo_to_image(
                 add_title_to_image(image, title, font_path, font_size, 'white', 'center', 50, -10, 80)
 
     # Optional arrow
+
     if arrow_path:
         arrow = Image.open(arrow_path).convert('RGBA')
         arrow_width = int(arrow.width * decrease_factor)
@@ -198,6 +215,7 @@ def add_logo_to_image(
         image.paste(arrow, arrow_positions[arrow_position], arrow)
 
     # Optional city text for 1080x1080
+
     if square == 'on' and image_width == 1080 and image_height == 1080 and city:
         sep_path = os.path.join(get_dir(), 'logo360', 'LogoSep.png')
         if os.path.isfile(sep_path):
@@ -220,33 +238,42 @@ def add_logo_to_image(
             draw.text((160, y_pos), city, font=myfont, fill='white')
 
     # Flatten RGBA to RGB with black background
+
     background_color = (0, 0, 0)  # background
     rgb_image = Image.new("RGB", image.size, background_color)
     rgb_image.paste(image, mask=image.split()[3])  # merge alpha channel
 
     # Save as JPEG
+
     rgb_image.save(image_output_path, format='JPEG', quality=100)
 
 
-#batch process multiple images
+# Batch process multiple images
 def batch_process_images(image_paths, logo_path, image_output_dir, logo_position, image_width, image_height, crop_position, logo_margin, logo_decrease_percent, arrow_path=None, arrow_position='bottom-right', logo_opacity=None, square=None, city=None, title=None, lang=None):
+    
     # Verify that the list of image paths is not empty
+
     if not image_paths:
         raise ValueError("The list of image paths must contain at least one element.")
     
     # Ensure the output directory exists
+
     if not os.path.exists(image_output_dir):
         os.makedirs(image_output_dir)
     
     # Process each image in the list
+
     for i, image_path in enumerate(image_paths):
         # Determine if the current image should have an arrow
+
         current_arrow_path = arrow_path if (i < len(image_paths) - 1) and (len(image_paths) > 1) else None
         
         # Construct the output path for the current image
+
         output_path = os.path.join(image_output_dir, f"processed_image_{i + 1}.jpg")
         
         # Call the add_logo_to_image function
+
         add_logo_to_image(
             image_source_path=image_path,
             logo_path=logo_path,
@@ -267,7 +294,8 @@ def batch_process_images(image_paths, logo_path, image_output_dir, logo_position
             lang=lang
         )
 
-#For 1080x1080, function to align text to center
+# For 1080x1080, function to align text to center
+
 def add_title_to_image(image, text, font_path, font_size, text_color, align='left', margin=10, spacing=0, y_position=None):
     draw = ImageDraw.Draw(image)
     font = ImageFont.truetype(font_path, font_size)
@@ -275,6 +303,7 @@ def add_title_to_image(image, text, font_path, font_size, text_color, align='lef
     max_text_width = image_width - 2 * margin
 
     # Wrap text based on available width
+
     words = text.split()
     lines = []
     current_line = []
@@ -292,18 +321,22 @@ def add_title_to_image(image, text, font_path, font_size, text_color, align='lef
     lines.append(' '.join(current_line))
 
     # Calculate total text block height
+
     text_height = sum([(font.getbbox(line)[3] - font.getbbox(line)[1]) + spacing for line in lines]) - spacing
 
     # Vertical position
+
     y = y_position if y_position is not None else (image_height - text_height) // 2
 
     # Draw each line
+
     for line in lines:
         bbox = font.getbbox(line)
         line_width = bbox[2] - bbox[0]
         line_height = bbox[3] - bbox[1]
 
         # Horizontal alignment
+
         if align == 'left':
             x = margin
         elif align == 'center':
@@ -320,6 +353,7 @@ def add_title_to_image(image, text, font_path, font_size, text_color, align='lef
 
 
 # Function to verify if image is HighRes
+
 def is_high_res(image_path, min_width=1920, min_height=1080):
     try:
         if not os.path.exists(image_path):
@@ -338,7 +372,8 @@ def is_high_res(image_path, min_width=1920, min_height=1080):
     
     return False
 
-#This function is used to respect the aspect ratio
+# Function to force respect the aspect ratio
+
 def calculate_new_dimensions(width, height, max_width=1920, max_height=1080):
     aspect_ratio = width / height
 
@@ -354,7 +389,8 @@ def calculate_new_dimensions(width, height, max_width=1920, max_height=1080):
 
     return new_width, new_height
 
-#If image is HighRes, it will be converted to HD
+# convert HighRes to HD
+
 def convert_to_hd(image_path, max_width=1920, max_height=1080):
     if is_high_res(image_path):
         try:
@@ -378,11 +414,12 @@ def convert_to_hd(image_path, max_width=1920, max_height=1080):
     
     return None
 
-#Function to add text with highlight word to Post (1080x1350): old version
+# Add text with highlight word to Post360 (1080x1350) (old version)
 def old_add_title_to_post(image, text, font_path, font_size, text_color,
                           align='left', margin=10, spacing=0, y_position=None,
                           highlight_word=None, highlight_color=None):
     # Convert hex color codes to RGB
+
     text_color = ImageColor.getrgb(text_color)
     if highlight_color:
         highlight_color = ImageColor.getrgb(highlight_color)
@@ -393,6 +430,7 @@ def old_add_title_to_post(image, text, font_path, font_size, text_color,
     max_text_width = image_width - 2 * margin
 
     # Wrap text based on available width
+
     words = text.split()
     lines = []
     current_line = []
@@ -409,18 +447,22 @@ def old_add_title_to_post(image, text, font_path, font_size, text_color,
     lines.append(' '.join(current_line))
 
     # Calculate total text block height
+
     text_height = sum([(font.getbbox(line)[3] - font.getbbox(line)[1]) + spacing for line in lines]) - spacing
 
     # Set vertical position
+
     y = y_position if y_position is not None else (image_height - text_height) // 2
 
     # Draw each line
+
     for line in lines:
         bbox_line = font.getbbox(line)
         line_width = bbox_line[2] - bbox_line[0]
         line_height = bbox_line[3] - bbox_line[1]
 
         # Horizontal alignment
+
         if align == 'left':
             x = margin
         elif align == 'center':
@@ -431,6 +473,7 @@ def old_add_title_to_post(image, text, font_path, font_size, text_color,
             raise ValueError("Invalid alignment value. Use 'left', 'center', or 'right'.")
 
         # Draw each word with optional highlight
+
         words_in_line = line.split()
         current_x = x
         for word in words_in_line:
@@ -443,6 +486,7 @@ def old_add_title_to_post(image, text, font_path, font_size, text_color,
                 draw.text((current_x, y), word, font=font, fill=text_color)
 
             # Add space width
+
             space_bbox = font.getbbox(' ')
             space_width = space_bbox[2] - space_bbox[0]
             current_x += word_width + space_width
@@ -450,6 +494,8 @@ def old_add_title_to_post(image, text, font_path, font_size, text_color,
         y += line_height + spacing
 
     return image
+
+# Add text with highlight word to Post360 (1080x1350)
 
 def add_title_to_post(
     image,
@@ -466,6 +512,7 @@ def add_title_to_post(
     is_rtl=False,
 ):
     # Convert hex colors
+
     text_color = ImageColor.getrgb(text_color)
     if highlight_color:
         highlight_color = ImageColor.getrgb(highlight_color)
@@ -477,6 +524,7 @@ def add_title_to_post(
     max_text_width = image_width - 2 * margin
 
     # Wrap text
+
     words = text.split()
     lines = []
     current_line = []
@@ -495,24 +543,30 @@ def add_title_to_post(
         lines.append(" ".join(current_line))
 
     # RTL support
+
     if is_rtl:
         lines = [" ".join(line.split()[::-1]) for line in lines]
 
     # Use font metrics for consistent line height
+
     ascent, descent = font.getmetrics()
     line_height = ascent + descent
 
     # Total block height
+
     text_height = line_height * len(lines) + spacing * (len(lines) - 1)
 
     # Vertical positioning
+
     y = y_position if y_position is not None else (image_height - text_height) // 2
 
     # Draw lines
+
     for line in lines:
         line_width = font.getbbox(line)[2]
 
         # Horizontal alignment
+
         if align == "left":
             x = margin if not is_rtl else image_width - line_width - margin
         elif align == "center":
@@ -540,13 +594,16 @@ def add_title_to_post(
             current_x += word_width + space_width
 
         # Consistent vertical advance
+
         y += line_height + spacing
 
     return image
 
-# function to create image file or generate preview of post
+# Create image file or generate preview
+
 def create_post(image_source_path, image_output_path, image_width, image_height, crop_position,
                 title, word, lang, title_size, title_spacing, title_color, word_color, mytag=None):
+    # Checks
 
     logo_path = os.path.join(get_dir(), 'logo360/LogoP.png')
     if not os.path.isfile(image_source_path):
@@ -561,6 +618,7 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
         raise ValueError("The logo must be in PNG format.")
  
     # Open the image and logo
+
     if is_high_res(image_source_path):
         image = convert_to_hd(image_source_path)
     else:
@@ -569,6 +627,7 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
     logo = Image.open(logo_path)
 
     # Resize the image if smaller than desired dimensions
+
     if image.size[0] < image_width or image.size[1] < image_height:
         new_width = max(image_width, 1000)
         new_height = max(image_height, 1000)
@@ -585,6 +644,7 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
         image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
     # Crop the image
+
     if crop_position not in ['right', 'left', 'center']:
         raise ValueError("Invalid crop position. Choose either 'right', 'left', or 'center'.")
     if crop_position == 'right':
@@ -597,9 +657,11 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
         image = image.crop((left, top, left + image_width, top + image_height))
 
     # Resize to exact dimensions
+
     image = image.resize((image_width, image_height), Image.Resampling.LANCZOS)
 
     # Add gradient shadow
+
     sh_path = os.path.join(get_dir(), 'shadows/ShadowPS.png')
     if not os.path.isfile(sh_path):
         raise FileNotFoundError(f"The file '{sh_path}' does not exist.")
@@ -609,9 +671,11 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
     image.paste(shadowsb, shadowsb if shadowsb.mode == 'RGBA' else None)
 
     # Paste the logo
+
     image.paste(logo, None, logo if logo.mode == 'RGBA' else None)
 
     # Add title text
+
     font_path = ''
     if lang == 'fr':
         font_path = os.path.join(get_dir(), 'fonts/DIN-Condensed-Bold.ttf')
@@ -629,6 +693,7 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
         raise ValueError("Language must be 'fr' or 'ar'.")
 
     # Add tag (Archive or Illustration)
+
     tag_map = {
         ("archive", "fr"): 'logo360/ARC.png',
         ("archive", "ar"): 'logo360/ARCAR.png',
@@ -644,85 +709,108 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
         itag = Image.open(tag_path)
         image.paste(itag, itag if itag.mode == 'RGBA' else None)
 
-    # PREVIEW MODE
+    # Preview mode
     if image_output_path == "preview":
             return image
 
     # Ensure output directory exists
+
     os.makedirs(image_output_path, exist_ok=True)
     output_path = os.path.join(image_output_path, "processed_image.jpeg")
 
     # Flatten RGBA to RGB with black background
+
     background_color = (0, 0, 0)  # background
     rgb_image = Image.new("RGB", image.size, background_color)
     rgb_image.paste(image, mask=image.split()[3])  # merge alpha channel
 
     # Save as JPEG
+
     rgb_image.save(output_path, format='JPEG', quality=100)
 
+# Function to create footix image
 
-#Function to create footix image
 def footix(image_source_path, image_output_path, crop_position):
 
     logo_path = os.path.join(get_dir(), 'logo360/Footix.png')
 
-    # Check if the image source and logo exist
+    # Checks
+
     if not os.path.isfile(image_source_path):
         raise FileNotFoundError(f"Image source file '{image_source_path}' not found.")
+
     if not os.path.isfile(logo_path):
         raise FileNotFoundError(f"Logo file '{logo_path}' not found.")
-    if not os.access(os.path.dirname(image_output_path), os.W_OK):
-        raise PermissionError(f"Cannot write to the directory '{os.path.dirname(image_output_path)}'.")
+
     if not logo_path.lower().endswith('.png'):
         raise ValueError("The logo must be in PNG format.")
 
-    # Open image and logo
+    os.makedirs(image_output_path, exist_ok=True)
+
+    if not os.access(image_output_path, os.W_OK):
+        raise PermissionError(f"Cannot write to the directory '{image_output_path}'.")
+
+    # Open image
+
     if is_high_res(image_source_path):
         image = convert_to_hd(image_source_path)
     else:
         image = Image.open(image_source_path)
 
-    logo = Image.open(logo_path)
+    image = image.convert("RGBA")
 
-    # Resize if smaller than 1920x1080
+    # Open logo
+
+    logo = Image.open(logo_path).convert("RGBA")
+
+    # Resize image if smaller than 1920x1080
+
     target_width, target_height = 1920, 1080
+
     if image.width < target_width or image.height < target_height:
         aspect_ratio = image.width / image.height
+
         if image.width < target_width:
             new_width = target_width
             new_height = int(target_width / aspect_ratio)
-        elif image.height < target_height:
+        else:
             new_height = target_height
             new_width = int(target_height * aspect_ratio)
-        else:
-            new_width, new_height = image.width, image.height
 
         image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-    # Crop to target dimensions
+    # Crop image
+
     if crop_position not in ['right', 'left', 'center']:
-        raise ValueError("Invalid crop position. Choose either 'right', 'left', or 'center'.")
+        raise ValueError("Invalid crop position. Choose 'right', 'left', or 'center'.")
 
     if crop_position == 'right':
-        image = image.crop((image.width - target_width, 0, image.width, target_height))
+        image = image.crop(
+            (image.width - target_width, 0, image.width, target_height)
+        )
     elif crop_position == 'left':
-        image = image.crop((0, 0, target_width, target_height))
-    elif crop_position == 'center':
+        image = image.crop(
+            (0, 0, target_width, target_height)
+        )
+    else:  # center
         left = (image.width - target_width) // 2
         top = (image.height - target_height) // 2
-        image = image.crop((left, top, left + target_width, top + target_height))
+        image = image.crop(
+            (left, top, left + target_width, top + target_height)
+        )
 
-    # Paste the logo
-    image.paste(logo, logo if logo.mode == 'RGBA' else None)
+    # Paste logo
 
-    # Ensure output directory exists
-    os.makedirs(image_output_path, exist_ok=True)
-    image_output = os.path.join(image_output_path, "footix.jpg")
+    image.paste(logo, (0, 0), logo)
 
     # Flatten RGBA to RGB with black background
-    background_color = (0, 0, 0)  # background
+    
+    background_color = (0, 0, 0)
     rgb_image = Image.new("RGB", image.size, background_color)
-    rgb_image.paste(image, mask=image.split()[3])  # merge alpha channel
+    rgb_image.paste(image, mask=image.split()[3])
 
-    # Save as JPEG
-    rgb_image.save(output_path, format='JPEG', quality=100)
+    # Save output
+
+    output_path = os.path.join(image_output_path, "footix.jpg")
+    rgb_image.save(output_path, format="JPEG", quality=100)
+
