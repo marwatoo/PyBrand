@@ -241,7 +241,8 @@ def add_logo_to_image(
 
     background_color = (0, 0, 0)  # background
     rgb_image = Image.new("RGB", image.size, background_color)
-    rgb_image.paste(image, mask=image.split()[3])  # merge alpha channel
+    #rgb_image.paste(image, mask=image.split()[3])  # merge alpha channel
+    rgb_image.paste(image)
 
     # Save as JPEG
 
@@ -722,8 +723,8 @@ def create_post(image_source_path, image_output_path, image_width, image_height,
 
     background_color = (0, 0, 0)  # background
     rgb_image = Image.new("RGB", image.size, background_color)
-    rgb_image.paste(image, mask=image.split()[3])  # merge alpha channel
-
+    #rgb_image.paste(image, mask=image.split()[3])  # merge alpha channel
+    rgb_image.paste(image)
     # Save as JPEG
 
     rgb_image.save(output_path, format='JPEG', quality=100)
@@ -807,8 +808,8 @@ def footix(image_source_path, image_output_path, crop_position):
     
     background_color = (0, 0, 0)
     rgb_image = Image.new("RGB", image.size, background_color)
-    rgb_image.paste(image, mask=image.split()[3])
-
+    #rgb_image.paste(image, mask=image.split()[3])
+    rgb_image.paste(image)
     # Save output
 
     output_path = os.path.join(image_output_path, "footix.jpg")
