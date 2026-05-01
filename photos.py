@@ -814,4 +814,3 @@ def footix(image_source_path, image_output_path, crop_position):
 
     output_path = os.path.join(image_output_path, "footix.jpg")
     rgb_image.save(output_path, format="JPEG", quality=100)
-
